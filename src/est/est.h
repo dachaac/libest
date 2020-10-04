@@ -590,6 +590,11 @@ LIBEST_API EST_CTX * est_server_init(unsigned char *ca_chain, int ca_chain_len,
 			  EST_CERT_FORMAT cert_format,
                           char *http_realm, X509 *tls_cert,
                           EVP_PKEY *tls_key);
+LIBEST_API EST_CTX * est_server_init_with_chain(unsigned char *ca_chain, int ca_chain_len,
+                                     unsigned char *cacerts_resp_chain, int cacerts_resp_chain_len,
+                                     EST_CERT_FORMAT cert_format,
+                                     char *http_realm, STACK_OF(X509_INFO) *tls_cert_chain,
+                                     EVP_PKEY *tls_key);
 LIBEST_API EST_CTX * est_proxy_init(unsigned char *ca_chain, int ca_chain_len,
                          unsigned char *cacerts_resp_chain, int cacerts_resp_chain_len,
 			 EST_CERT_FORMAT cert_format,

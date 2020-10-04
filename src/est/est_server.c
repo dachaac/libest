@@ -3305,6 +3305,195 @@ EST_CTX * est_server_init (unsigned char *ca_chain, int ca_chain_len,
     return (ctx);
 }
 
+/*! @brief est_server_init_with_chain() is used by an application to create
+    a context in the EST library when operating as an EST server that
+    fronts a CA.  This context is used when invoking other functions in the API.
+
+    @param ca_chain     Char array containing PEM encoded CA certs & CRL entries
+    @param ca_chain_len Length of ca_chain char array
+    @param cacerts_resp_chain Char array containing PEM encoded CA certs to include
+                              in the /cacerts response
+    @param cacerts_resp_chain_len Length of cacerts_resp_chain char array
+    @param cert_format Specifies the encoding of the local and external
+                       certificate chains (PEM/DER).
+    @param http_realm Char array containing HTTP realm name for HTTP auth
+    @param tls_id_cert Pointer to X509 that contains the server's certificate
+                    for the TLS layer.
+    @param tls_id_key Pointer to EVP_PKEY that contains the private key
+                   associated with the server's certificate.
+
+    This function allows an application to initialize an EST server context
+    that is used with a CA (not an RA).
+    The application must provide the trusted CA certificates to use
+    for server operation using the ca_chain parameter.  This certificate
+    set should include the explicit trust anchor certificate, any number
+    of implicit trust anchor certificates, and any intermediate sub-CA
+    certificates required to complete the chain of trust between the
+    identity certificate passed into the tls_id_cert parameter and the
+    root certificate for that identity certificate.
+    The CA certificates should be encoded using
+    the format specified in the cert_format parameter (e.g. PEM) and
+    may contain CRL entries that will be used when authenticating
+    EST clients connecting to the server.
+    The applications must also provide the HTTP realm to use for
+    HTTP authentication and the server certificate/private key to use
+    for the TLS stack to identify the server.
+
+    Warning: Including additional intermediate sub-CA certificates that are
+             not needed to complete the chain of trust may result in a
+	     potential MITM attack.
+
+    @return EST_CTX.
+ */
+EST_CTX * est_server_init_with_chain (unsigned char *ca_chain, int ca_chain_len,
+                                      unsigned char *cacerts_resp_chain, int cacerts_resp_chain_len,
+                                      EST_CERT_FORMAT cert_format,
+                                      char *http_realm,
+                                      STACK_OF(X509_INFO) *tls_cert_chain, EVP_PKEY *tls_id_key)
+{
+    EST_CTX *ctx;
+    int len;
+#if HAVE_LIBCOAP
+    EST_ERROR rc;
+#endif
+
+    est_log_version();
+
+    /*
+     * Sanity check the input
+     */
+    if (ca_chain == NULL) {
+        EST_LOG_ERR("Trusted CA certificate set is empty");
+        return NULL;
+    }
+    if (cert_format != EST_CERT_FORMAT_PEM) {
+        EST_LOG_ERR("Only PEM encoding of certificate changes is supported.");
+        return NULL;
+    }
+
+    /*
+     * Check the length value, it should match.
+     */
+    len = (int) strnlen_s((char *)ca_chain, EST_CA_MAX);
+    if (len != ca_chain_len) {
+        EST_LOG_ERR("Length of ca_chain doesn't match ca_chain_len");
+        return NULL;
+    }
+    if (cacerts_resp_chain) {
+        len = (int) strnlen_s((char *)cacerts_resp_chain, EST_CA_MAX);
+        if (len != cacerts_resp_chain_len) {
+            EST_LOG_ERR("Actual length of cacerts_resp_chain does not match "
+                        "passed in length value");
+            return NULL;
+        }
+    }
+
+    if (tls_cert_chain == NULL) {
+        EST_LOG_ERR("TLS identity cert is empty");
+        return NULL;
+    }
+
+    if (tls_id_key == NULL) {
+        EST_LOG_ERR("Private key associated with TLS identity cert is empty");
+        return NULL;
+    }
+    if (http_realm == NULL) {
+        EST_LOG_ERR("EST HTTP realm is NULL");
+        return NULL;
+    }
+
+    ctx = malloc(sizeof(EST_CTX));
+    if (!ctx) {
+        EST_LOG_ERR("malloc failed");
+        return NULL;
+    }
+    memzero_s(ctx, sizeof(EST_CTX));
+    ctx->est_mode = EST_SERVER;
+    ctx->retry_period = EST_RETRY_PERIOD_DEF;
+    ctx->require_http_auth = HTTP_AUTH_REQUIRED;
+    ctx->server_read_timeout = EST_SSL_READ_TIMEOUT_DEF;
+
+    ctx->brski_retry_period = EST_BRSKI_RETRY_PERIOD_DEF;
+    /*
+     * Load the CA certificates into local memory and retain
+     * for future use.  This will be used for /cacerts requests.
+     * They are optional parameters.  The alternative is for the
+     * app layer to provide a callback and return them on the fly.
+     */
+    if (cacerts_resp_chain) {
+        if (est_load_ca_certs(ctx, cacerts_resp_chain, cacerts_resp_chain_len)) {
+            EST_LOG_ERR("Failed to load CA certificates response buffer");
+            free(ctx);
+            return NULL;
+        }
+    }
+    if (est_load_trusted_certs(ctx, ca_chain, ca_chain_len)) {
+        EST_LOG_ERR("Failed to load trusted certificate store");
+        free(ctx);
+        return NULL;
+    }
+
+    strcpy_s(ctx->realm, MAX_REALM, http_realm);
+
+    if (sk_X509_INFO_num(tls_cert_chain) == 0) {
+        EST_LOG_ERR("Server certificate chain is empty\n");
+        return 0;
+    }
+
+    X509_INFO *server_cert = sk_X509_INFO_shift(tls_cert_chain);
+    if (server_cert->x509 == NULL) {
+        EST_LOG_ERR("Server certificate chain is missing server certificate\n");
+        return 0;
+    }
+
+    ctx->server_cert = X509_dup(server_cert->x509);
+    ctx->server_cert_chain = tls_cert_chain;
+    ctx->server_priv_key = tls_id_key;
+    ctx->auth_mode = AUTH_BASIC;
+    ctx->server_enable_pop = 1;
+    ctx->local_cacerts_processing = 1;
+
+    /*
+     * Create a new ASN object for the id-kp-cmcRA OID.
+     * OpenSSL doesn't define this, so we need to create it
+     * ourselves.
+     * http://www.openssl.org/docs/crypto/OBJ_nid2obj.html
+     */
+    if (!o_cmcRA) {
+        o_cmcRA = OBJ_txt2obj("1.3.6.1.5.5.7.3.28", 1);
+        if (!o_cmcRA) {
+            EST_LOG_WARN("Failed to create OID for id-kp-cmcRA key usage checks");
+        }
+    }
+
+#ifdef HAVE_LIBCOAP
+    /*
+     * Initialize the DTLS handshake configuration values.
+     * timeout value set to DEF(0), this will cause the initial timeout value to be
+     * CiscoSSL's value of 1.
+     * mtu value set to DEF(0), this will cause libcoap to specify its default
+     * MTU value of 1152.
+     */
+    ctx->dtls_handshake_timer = EST_DTLS_HANDSHAKE_TIMEOUT_DEF;
+    ctx->dtls_handshake_mtu = EST_DTLS_HANDSHAKE_MTU_DEF;
+    ctx->dtls_session_max = EST_DTLS_SESSION_MAX_DEF;
+
+    /*
+     * Initialize the CoAP request array
+     */
+    rc = est_coap_init_req_array(ctx, ctx->dtls_session_max);
+    if (rc != EST_ERR_NONE) {
+        EST_LOG_ERR("Failed to initialize the CoAP request array");
+        free(ctx);
+        return NULL;
+    }
+    ctx->down_time_timer_initialized = 0;
+#endif
+    ctx->perf_timers_enabled = 0;
+
+    return (ctx);
+}
+
 /*! @brief est_server_set_auth_mode() is used by an application to configure
     the HTTP authentication method to use for validating the identity of
     an EST client.

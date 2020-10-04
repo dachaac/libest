@@ -529,6 +529,7 @@ struct est_ctx {
     EST_MG_CONTEXT *mg_ctx;
     int server_read_timeout;
     X509 *server_cert;
+    STACK_OF(X509_INFO) *server_cert_chain;
     EVP_PKEY *server_priv_key;
     int server_enable_pop; /* enable proof-of-possession check */
     int client_force_pop;  /* force proof-of-possession gen at the client */

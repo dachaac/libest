@@ -1343,6 +1343,7 @@ static int set_ssl_option (struct mg_context *ctx)
     X509_VERIFY_PARAM *vpm = NULL;
     char sic[12] = "EST";
     const char *sslKeyLogFile;
+    int i;
 
 #ifdef HAVE_OLD_OPENSSL
     if ((ssl_ctx = SSL_CTX_new(SSLv23_server_method())) == NULL) {
@@ -1491,6 +1492,16 @@ static int set_ssl_option (struct mg_context *ctx)
     if (SSL_CTX_use_PrivateKey(ssl_ctx, ectx->server_priv_key) == 0) {
 	EST_LOG_ERR("Unable to set server private key");
         return 0;
+    }
+
+    for (i = 0; i < sk_X509_INFO_num(ectx->server_cert_chain); i++) {
+        X509_INFO *chain_cert = sk_X509_INFO_value(ectx->server_cert_chain, i);
+        if (chain_cert->x509 != NULL) {
+            if (SSL_CTX_add_extra_chain_cert(ssl_ctx, chain_cert->x509) == 0) {
+                EST_LOG_ERR("Failed to add chain certificate to SSL context\n");
+                return 0;
+            }
+        }
     }
 
     /*

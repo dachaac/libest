@@ -2056,7 +2056,7 @@ int main (int argc, char **argv)
     int rc;
 #endif    
 
-    X509 *x;
+    STACK_OF(X509_INFO) *cert_chain;
     EVP_PKEY * priv_key;
     BIO *certin;
     DH *dh;
@@ -2345,8 +2345,8 @@ int main (int argc, char **argv)
      * This reads the file, which is expected to be PEM encoded.  If you're using
      * DER encoded certs, you would invoke d2i_X509_bio() instead.
      */
-    x = PEM_read_bio_X509(certin, NULL, NULL, NULL);
-    if (x == NULL) {
+    cert_chain = PEM_X509_INFO_read_bio(certin, NULL, NULL, NULL);
+    if (cert_chain == NULL) {
         printf("\nError while reading PEM encoded server certificate file %s\n",
                certfile);
         exit(1);
@@ -2377,8 +2377,8 @@ int main (int argc, char **argv)
     } else {
         est_init_logger(EST_LOG_LVL_ERR, NULL);
     }
-    ectx = est_server_init(trustcerts, trustcerts_len, cacerts_raw, cacerts_len,
-                           EST_CERT_FORMAT_PEM, realm, x, priv_key);
+    ectx = est_server_init_with_chain(trustcerts, trustcerts_len, cacerts_raw, cacerts_len,
+                           EST_CERT_FORMAT_PEM, realm, cert_chain, priv_key);
     if (!ectx) {
         printf("\nUnable to initialize EST context.  Aborting!!!\n");
         exit(1);
@@ -2748,7 +2748,7 @@ int main (int argc, char **argv)
     
     cleanup();
     EVP_PKEY_free(priv_key);
-    X509_free(x);
+    sk_X509_INFO_free(cert_chain);
     return 0;
 }
 
