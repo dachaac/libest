@@ -611,13 +611,13 @@ est_coap_sen_handler (coap_context_t  *ctx, struct coap_resource_t *resource,
      */
     /* TODO: this ought to be altered when coap can handle path segments */
     if (EOK == strcmp_s(((const char *)resource->uri_path->s),
-                        resource->uri_path->length, "est/sen", &ind) &&
+                        resource->uri_path->length, ".well-known/est/sen", &ind) &&
         ind == 0) {
         enroll_req = SIMPLE_ENROLL_REQ;
         req_type = EST_COAP_REQ_SEN;
     } else if (EOK ==
                (strcmp_s(((const char *)resource->uri_path->s),
-                         resource->uri_path->length, "est/sren", &ind)) &&
+                         resource->uri_path->length, ".well-known/est/sren", &ind)) &&
                ind == 0) {
         enroll_req = REENROLL_REQ;
         req_type = EST_COAP_REQ_SREN;
@@ -2551,7 +2551,7 @@ static void est_server_coap_init_resources (coap_context_t *ctx)
      * EST resources
      */
 /*   #define EST_COAP_SIMPLEENROLL_URI ".well-known/est/sen" */
-#define EST_COAP_SIMPLEENROLL_URI "est/sen"
+#define EST_COAP_SIMPLEENROLL_URI ".well-known/est/sen"
     r = coap_resource_init(coap_make_str_const(EST_COAP_SIMPLEENROLL_URI),
                            COAP_RESOURCE_FLAGS_NOTIFY_CON);
   
@@ -2565,7 +2565,7 @@ static void est_server_coap_init_resources (coap_context_t *ctx)
 
     coap_add_resource(ctx, r);
   
-#define EST_COAP_SIMPLEREENROLL_URI "est/sren"
+#define EST_COAP_SIMPLEREENROLL_URI ".well-known/est/sren"
     r = coap_resource_init(coap_make_str_const(EST_COAP_SIMPLEREENROLL_URI),
                            COAP_RESOURCE_FLAGS_NOTIFY_CON);
   
@@ -2579,7 +2579,7 @@ static void est_server_coap_init_resources (coap_context_t *ctx)
 
     coap_add_resource(ctx, r);
 /*TODO BD: Make sure legit */
-#define EST_COAP_SERVERKEYGEN_URI "est/skg"
+#define EST_COAP_SERVERKEYGEN_URI ".well-known/est/skg"
     r = coap_resource_init(coap_make_str_const(EST_COAP_SERVERKEYGEN_URI),
                            COAP_RESOURCE_FLAGS_NOTIFY_CON);
   
@@ -2593,7 +2593,7 @@ static void est_server_coap_init_resources (coap_context_t *ctx)
 
     coap_add_resource(ctx, r);
 
-#define EST_COAP_CACERTS_URI "est/crts"
+#define EST_COAP_CACERTS_URI ".well-known/est/crts"
     r = coap_resource_init(coap_make_str_const(EST_COAP_CACERTS_URI),
                            COAP_RESOURCE_FLAGS_NOTIFY_CON);
   
@@ -2607,7 +2607,7 @@ static void est_server_coap_init_resources (coap_context_t *ctx)
 
     coap_add_resource(ctx, r);
 
-#define EST_COAP_CSR_ATTRS_URI "est/att"
+#define EST_COAP_CSR_ATTRS_URI ".well-known/est/att"
     r = coap_resource_init(coap_make_str_const(EST_COAP_CSR_ATTRS_URI),
                            COAP_RESOURCE_FLAGS_NOTIFY_CON);
   
