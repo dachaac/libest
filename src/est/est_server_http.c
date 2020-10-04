@@ -129,6 +129,8 @@ typedef int socklen_t;
 #define PATH_MAX 4096
 #endif
 
+static FILE *ssl_keylog_fp = NULL;
+
 static int mg_printf(struct mg_connection *conn, const char *fmt, ...);
 
 // Describes a string (chunk of memory).
@@ -1316,6 +1318,12 @@ static void log_access (const struct mg_connection *conn)
     log_header(conn, "User-Agent");
 }
 
+static void ssl_keylog_cb(const SSL *ssl, const char *line)
+{
+    fprintf(ssl_keylog_fp, "%s\n", line);
+    fflush(ssl_keylog_fp);
+}
+
 // Return OpenSSL error message
 static const char *ssl_error (void)
 {
@@ -1334,6 +1342,7 @@ static int set_ssl_option (struct mg_context *ctx)
     EC_KEY *ecdh = NULL;
     X509_VERIFY_PARAM *vpm = NULL;
     char sic[12] = "EST";
+    const char *sslKeyLogFile;
 
 #ifdef HAVE_OLD_OPENSSL
     if ((ssl_ctx = SSL_CTX_new(SSLv23_server_method())) == NULL) {
@@ -1358,6 +1367,14 @@ static int set_ssl_option (struct mg_context *ctx)
 
 
     SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
+
+    sslKeyLogFile = getenv("SSLKEYLOGFILE");
+    if (sslKeyLogFile != NULL) {
+        ssl_keylog_fp = fopen(sslKeyLogFile, "a");
+        if (ssl_keylog_fp != NULL) {
+            SSL_CTX_set_keylog_callback(ssl_ctx, ssl_keylog_cb);
+        }
+    }
 
     /*
      * Set the Session ID context to enable OpenSSL session
